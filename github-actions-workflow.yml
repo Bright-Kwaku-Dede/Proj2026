@@ -1,0 +1,178 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '18.x'
+
+jobs:
+  # Continuous Integration
+  test:
+    name: Test and Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linter
+      run: npm run lint
+    
+    - name: Run unit tests
+      run: npm test
+    
+    - name: Generate coverage report
+      run: npm run test:coverage
+      if: always()
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      if: always()
+
+  # Build Application
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist-files
+        path: dist/
+        retention-days: 7
+
+  # Security Scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run npm audit
+      run: npm audit --audit-level=moderate
+      continue-on-error: true
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [test, build, security]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://staging.example.com
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: dist-files
+        path: dist/
+    
+    - name: Deploy to staging server
+      run: |
+        echo "Deploying to staging environment..."
+        # Add your deployment script here
+        # Example: rsync, SSH, cloud provider CLI, etc.
+    
+    - name: Run smoke tests
+      run: |
+        echo "Running smoke tests..."
+        # Add smoke test commands
+        # curl -f https://staging.example.com/health || exit 1
+    
+    - name: Notify deployment
+      if: always()
+      run: |
+        echo "Staging deployment completed with status: ${{ job.status }}"
+
+  # Deploy to Production
+  deploy-production:
+    name: Deploy to Production
+    needs: [test, build, security]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://example.com
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: dist-files
+        path: dist/
+    
+    - name: Deploy to production server
+      run: |
+        echo "Deploying to production environment..."
+        # Add your deployment script here
+    
+    - name: Run smoke tests
+      run: |
+        echo "Running production smoke tests..."
+        # Add production smoke tests
+        # curl -f https://example.com/health || exit 1
+    
+    - name: Create deployment notification
+      if: success()
+      run: |
+        echo "Production deployment successful!"
+    
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        echo "Deployment failed! Initiating rollback..."
+        # Add rollback commands

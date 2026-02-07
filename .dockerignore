@@ -1,0 +1,29 @@
+# Node
+node_modules
+npm-debug.log
+
+# Git
+.git
+.gitignore
+
+# Docker & CI
+.github
+Dockerfile
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Build / Output
+dist/
+coverage/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Tests (optional, if you don't want them in image)
+tests/
